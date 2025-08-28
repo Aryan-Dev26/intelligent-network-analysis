@@ -1,6 +1,6 @@
 """
 Network Traffic Capture Module
-Author: [Your Name]
+Author: [Aryan Pravin Sahu]
 Description: Captures and analyzes network packets for anomaly detection
 """
 
@@ -15,7 +15,7 @@ from typing import List, Dict, Any
 class NetworkCapture:
     """
     Network traffic capture and basic analysis class
-    This is your first working module!
+    
     """
     
     def __init__(self):

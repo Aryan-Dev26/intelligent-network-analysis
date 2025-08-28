@@ -1,0 +1,36 @@
+{
+  "data_info": {
+    "total_packets": 100,
+    "time_range": "2025-08-28 14:10:11.864493 to 2025-08-28 14:10:11.865388",
+    "duration_hours": 2.486111111111111e-07
+  },
+  "traffic_stats": {
+    "total_bytes": "70670",
+    "avg_packet_size": 706.7,
+    "max_packet_size": "1489",
+    "min_packet_size": "89"
+  },
+  "protocol_distribution": {
+    "UDP": 22,
+    "DNS": 16,
+    "TCP": 16,
+    "FTP": 16,
+    "HTTP": 15,
+    "HTTPS": 15
+  },
+  "suspicious_packets": {
+    "count": "8",
+    "percentage": 8.0
+  },
+  "network_analysis": {
+    "internal_traffic": "72",
+    "external_traffic": "28",
+    "unique_src_ips": 100,
+    "unique_dst_ips": 100
+  },
+  "time_analysis": {
+    "peak_hour": "14",
+    "weekend_traffic": "0",
+    "weekday_traffic": "100"
+  }
+}

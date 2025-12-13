@@ -390,8 +390,11 @@
                 <button class="btn btn-info" onclick="startRealMonitoring()" id="startRealBtn">
                     Start Real Monitoring
                 </button>
-                <button class="btn btn-danger" onclick="stopRealMonitoring()" id="stopRealBtn" disabled>
+                <button class="btn btn-danger" onclick="try { stopRealMonitoring(); } catch(e) { console.error('Stop button error:', e); alert('Error: ' + e.message); }" id="stopRealBtn" disabled>
                     Stop Monitoring
+                </button>
+                <button class="btn btn-secondary" onclick="resetMonitoringUI()" id="resetBtn" style="margin-left: 10px;">
+                    Reset UI
                 </button>
                 <div id="realMonitoringResults" class="results-container" style="display: none;">
                     <!-- Real monitoring results will be populated here -->
@@ -1007,8 +1010,11 @@
                     startBtn.disabled = true;
                     stopBtn.disabled = false;
                     
-                    // Start polling for real monitoring stats
-                    realMonitoringInterval = setInterval(updateRealMonitoringStats, 3000);
+                    // Start polling for real monitoring stats and anomaly details
+                    realMonitoringInterval = setInterval(() => {
+                        updateRealMonitoringStats();
+                        updateAnomalyDetails();
+                    }, 3000);
                     
                     results.innerHTML = `
                         <h4>🔴 LIVE: Real Network Monitoring Active</h4>
@@ -1032,6 +1038,31 @@
                 } else {
                     if (data.consent_required) {
                         alert("User consent is required for real network monitoring.");
+                    } else if (data.status === 'warning' && data.message.includes('already active')) {
+                        // Handle "already active" error
+                        const forceRestart = confirm(
+                            "Monitoring appears to be already active.\n\n" +
+                            "This might be due to a previous session that didn't stop properly.\n\n" +
+                            "Options:\n" +
+                            "• Click OK to force restart monitoring\n" +
+                            "• Click Cancel to try stopping first\n\n" +
+                            "Force restart monitoring?"
+                        );
+                        
+                        if (forceRestart) {
+                            // Try again with force restart
+                            await startRealMonitoringForce();
+                        } else {
+                            // Suggest using reset or stop
+                            const resetState = confirm(
+                                "Would you like to reset the monitoring state?\n\n" +
+                                "This will clear any stuck monitoring sessions."
+                            );
+                            
+                            if (resetState) {
+                                await resetMonitoringState();
+                            }
+                        }
                     } else {
                         alert(`Error: ${data.message}`);
                     }
@@ -1044,36 +1075,193 @@
             startBtn.disabled = false;
         }
 
-        async function stopRealMonitoring() {
+        async function startRealMonitoringForce() {
+            console.log('Force restarting monitoring...');
+            
             const startBtn = document.getElementById('startRealBtn');
             const stopBtn = document.getElementById('stopRealBtn');
-            const status = document.getElementById('realMonitoringStatus');
-            const statusText = document.getElementById('realMonitoringStatusText');
+            
+            startBtn.innerHTML = '<span class="loading"></span>Force Restarting...';
+            startBtn.disabled = true;
             
             try {
-                const response = await fetch('/api/stop_real_monitoring');
+                const response = await fetch('/api/start_real_monitoring', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        consent_granted: true,
+                        duration: 300,
+                        force_restart: true  // Force restart flag
+                    })
+                });
+                
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    status.className = 'status-indicator status-inactive';
-                    statusText.textContent = 'Inactive';
+                    // Same success handling as regular start
+                    const status = document.getElementById('realMonitoringStatus');
+                    const statusText = document.getElementById('realMonitoringStatusText');
+                    const results = document.getElementById('realMonitoringResults');
+                    
+                    status.className = 'status-indicator status-active';
+                    statusText.textContent = 'Active - Real Traffic';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    
+                    // Start polling
+                    realMonitoringInterval = setInterval(() => {
+                        updateRealMonitoringStats();
+                        updateAnomalyDetails();
+                    }, 3000);
+                    
+                    results.innerHTML = `
+                        <h4>🔴 LIVE: Real Network Monitoring Active (Force Restarted)</h4>
+                        <div class="metric">
+                            <span class="metric-label">Monitoring Duration:</span>
+                            <span class="metric-value">${data.monitoring_duration} seconds</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">IP Anonymization:</span>
+                            <span class="metric-value">${data.security_settings.anonymize_ips ? '✅ Active' : '❌ Inactive'}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Payload Capture:</span>
+                            <span class="metric-value">${data.security_settings.capture_payload ? '⚠️ Active' : '✅ Disabled'}</span>
+                        </div>
+                        <div id="realStatsContainer">
+                            <p>Waiting for network traffic...</p>
+                        </div>
+                    `;
+                    results.style.display = 'block';
+                    
+                    alert('Monitoring force restarted successfully!');
+                } else {
+                    alert(`Force restart failed: ${data.message}`);
+                }
+            } catch (error) {
+                alert(`Force restart error: ${error.message}`);
+            }
+            
+            startBtn.innerHTML = 'Start Real Monitoring';
+            startBtn.disabled = false;
+        }
+
+        async function resetMonitoringState() {
+            console.log('Resetting monitoring state...');
+            
+            try {
+                const response = await fetch('/api/reset_monitoring_state', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Reset UI to initial state
+                    const startBtn = document.getElementById('startRealBtn');
+                    const stopBtn = document.getElementById('stopRealBtn');
+                    const status = document.getElementById('realMonitoringStatus');
+                    const statusText = document.getElementById('realMonitoringStatusText');
+                    const results = document.getElementById('realMonitoringResults');
+                    
                     startBtn.disabled = false;
                     stopBtn.disabled = true;
+                    status.className = 'status-indicator status-inactive';
+                    statusText.textContent = 'Inactive';
                     
-                    // Stop polling
+                    if (results) {
+                        results.style.display = 'none';
+                    }
+                    
+                    // Clear any polling
                     if (realMonitoringInterval) {
                         clearInterval(realMonitoringInterval);
                         realMonitoringInterval = null;
                     }
                     
-                    // Show final export option
-                    const exportData = confirm("Real network monitoring stopped. Would you like to export the captured data?");
-                    if (exportData) {
-                        exportRealData();
-                    }
+                    alert('Monitoring state reset successfully! You can now start monitoring.');
+                } else {
+                    alert(`Reset failed: ${data.message}`);
                 }
             } catch (error) {
+                alert(`Reset error: ${error.message}`);
+            }
+        }
+
+        async function stopRealMonitoring() {
+            console.log('Stop monitoring button clicked');
+            
+            const startBtn = document.getElementById('startRealBtn');
+            const stopBtn = document.getElementById('stopRealBtn');
+            const status = document.getElementById('realMonitoringStatus');
+            const statusText = document.getElementById('realMonitoringStatusText');
+            
+            // Disable button immediately to prevent double-clicks
+            stopBtn.disabled = true;
+            stopBtn.textContent = 'Stopping...';
+            
+            try {
+                console.log('Sending stop request to API...');
+                const response = await fetch('/api/stop_real_monitoring');
+                console.log('API response received:', response.status);
+                
+                const data = await response.json();
+                console.log('API response data:', data);
+                
+                if (data.status === 'success' || data.status === 'warning') {
+                    // Update UI regardless of whether monitoring was active
+                    status.className = 'status-indicator status-inactive';
+                    statusText.textContent = 'Inactive';
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    stopBtn.textContent = 'Stop Monitoring';
+                    
+                    // Stop polling
+                    if (realMonitoringInterval) {
+                        clearInterval(realMonitoringInterval);
+                        realMonitoringInterval = null;
+                        console.log('Polling stopped');
+                    }
+                    
+                    // Clear the monitoring results
+                    const resultsContainer = document.getElementById('realMonitoringResults');
+                    if (resultsContainer) {
+                        resultsContainer.style.display = 'none';
+                    }
+                    
+                    // Clear stats container
+                    const statsContainer = document.getElementById('realStatsContainer');
+                    if (statsContainer) {
+                        statsContainer.innerHTML = '<p>Monitoring stopped. Click "Start Real Monitoring" to begin again.</p>';
+                    }
+                    
+                    // Show success message
+                    alert(`Monitoring stopped successfully: ${data.message}`);
+                    
+                    // Optional: Show export option only if there was actual data
+                    if (data.status === 'success') {
+                        const exportData = confirm("Real network monitoring stopped. Would you like to export the captured data?");
+                        if (exportData) {
+                            exportRealData();
+                        }
+                    }
+                } else {
+                    // Handle error response
+                    console.error('API returned error:', data);
+                    alert(`Failed to stop monitoring: ${data.message}`);
+                    stopBtn.disabled = false;
+                    stopBtn.textContent = 'Stop Monitoring';
+                }
+            } catch (error) {
+                console.error('Network error:', error);
                 alert(`Network Error: ${error.message}`);
+                stopBtn.disabled = false;
+                stopBtn.textContent = 'Stop Monitoring';
             }
         }
 
@@ -1122,6 +1310,8 @@
                             </div>
                         ` : ''}
                         
+                        <div id="anomalyDetailsSection"></div>
+                        
                         <h5 style="margin-top: 15px; color: #4a5568;">Protocol Distribution:</h5>
                         <div style="font-family: monospace; background: #f7fafc; padding: 10px; border-radius: 4px;">
                             ${Object.entries(security.protocol_distribution).map(([protocol, count]) => 
@@ -1132,6 +1322,110 @@
                 }
             } catch (error) {
                 console.error('Error updating real monitoring stats:', error);
+            }
+        }
+
+        async function updateAnomalyDetails() {
+            try {
+                const response = await fetch('/api/anomaly_details');
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.total_anomalies > 0) {
+                    const anomalies = data.recent_anomalies || [];
+                    const summary = data.summary || {};
+                    
+                    document.getElementById('anomalyDetailsSection').innerHTML = `
+                        <h5 style="margin-top: 20px; color: #e53e3e;">🚨 Detailed Anomaly Analysis (${data.total_anomalies} total)</h5>
+                        
+                        ${summary.threat_categories ? `
+                            <div style="background: #fed7d7; padding: 10px; border-radius: 8px; margin: 10px 0;">
+                                <strong>Threat Categories:</strong>
+                                ${Object.entries(summary.threat_categories).map(([category, count]) => 
+                                    `<span style="margin-right: 15px;">${category.replace('_', ' ')}: ${count}</span>`
+                                ).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        ${summary.processes_involved ? `
+                            <div style="background: #fef5e7; padding: 10px; border-radius: 8px; margin: 10px 0;">
+                                <strong>Top Processes:</strong>
+                                ${Object.entries(summary.processes_involved).slice(0, 3).map(([process, count]) => 
+                                    `<span style="margin-right: 15px;">${process}: ${count}</span>`
+                                ).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: white;">
+                            <strong>Recent Anomalies:</strong>
+                            ${anomalies.slice(-5).map(anomaly => {
+                                const packet = anomaly.packet_info || {};
+                                const process = anomaly.process_info || {};
+                                const risk = anomaly.risk_analysis || {};
+                                
+                                return `
+                                    <div style="border-bottom: 1px solid #edf2f7; padding: 8px 0; font-size: 0.9em;">
+                                        <div style="font-weight: bold; color: #e53e3e;">
+                                            Anomaly #${anomaly.anomaly_id} - ${risk.threat_category?.replace('_', ' ') || 'Unknown'}
+                                        </div>
+                                        <div style="color: #4a5568; margin: 2px 0;">
+                                            📍 ${packet.src_ip}:${packet.src_port} → ${packet.dst_ip}:${packet.dst_port}
+                                        </div>
+                                        <div style="color: #4a5568; margin: 2px 0;">
+                                            🔧 Process: ${process.name || 'Unknown'} ${process.pid ? `(PID: ${process.pid})` : ''}
+                                        </div>
+                                        <div style="color: #2d3748; margin: 2px 0; font-style: italic;">
+                                            💡 ${anomaly.explanation || 'No explanation available'}
+                                        </div>
+                                        <div style="color: #718096; font-size: 0.8em;">
+                                            ⏰ ${new Date(anomaly.detection_time).toLocaleTimeString()}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        
+                        <div style="margin-top: 10px; text-align: center;">
+                            <button onclick="exportAnomalyReport()" style="background: #4299e1; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                                📄 Export Detailed Report
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('anomalyDetailsSection').innerHTML = `
+                        <div style="margin-top: 15px; padding: 10px; background: #f0fff4; border-radius: 8px; color: #38a169;">
+                            ✅ No anomalies detected - Network traffic appears normal
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error updating anomaly details:', error);
+                document.getElementById('anomalyDetailsSection').innerHTML = `
+                    <div style="margin-top: 15px; padding: 10px; background: #fed7d7; border-radius: 8px; color: #e53e3e;">
+                        ❌ Error loading anomaly details: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function resetMonitoringUI() {
+            console.log('Resetting monitoring UI and backend state...');
+            
+            // Use the backend reset function for complete reset
+            await resetMonitoringState();
+        }
+
+        async function exportAnomalyReport() {
+            try {
+                const response = await fetch('/api/export_anomaly_report');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    alert(`Anomaly report exported successfully!\nFile: ${data.filename}`);
+                } else {
+                    alert(`Export failed: ${data.message}`);
+                }
+            } catch (error) {
+                alert(`Export error: ${error.message}`);
             }
         }
 

@@ -27,6 +27,14 @@ from security.security_config import SecurityConfig, setup_secure_environment
 
 app = Flask(__name__)
 
+def check_admin_privileges():
+    """Check if running with administrator privileges on Windows"""
+    try:
+        import ctypes
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
 # Global variables for real-time processing
 stream_processor = None
 advanced_detector = None
@@ -605,11 +613,25 @@ def start_real_monitoring():
     global real_network_capture, is_real_monitoring, security_config
     
     try:
+        # Check if monitoring is already active
         if is_real_monitoring:
-            return jsonify({
-                'status': 'warning',
-                'message': 'Real network monitoring already active'
-            })
+            # Check if we should force restart
+            request_data = request.get_json() or {}
+            force_restart = request_data.get('force_restart', False)
+            
+            if not force_restart:
+                return jsonify({
+                    'status': 'warning',
+                    'message': 'Real network monitoring already active',
+                    'suggestion': 'Use force_restart=true to restart monitoring or stop current monitoring first'
+                })
+            else:
+                # Force stop current monitoring before starting new one
+                print("Force restarting monitoring...")
+                if real_network_capture:
+                    real_network_capture.stop_monitoring()
+                is_real_monitoring = False
+                time.sleep(1)  # Give it a moment to stop
         
         # Initialize security if not done
         if not security_config:
@@ -634,8 +656,14 @@ def start_real_monitoring():
         # Get capture limits first
         limits = security_config.get_capture_limits()
         
+        # Check admin privileges first
+        has_admin = check_admin_privileges()
+        print(f"Administrator privileges: {has_admin}")
+        
         # Initialize real network capture with security settings
+        print(f"Initializing real network capture with interface: {interface}")
         real_network_capture = RealNetworkCapture(interface=interface)
+        print(f"Real network capture initialized.")
         
         # Apply security settings
         real_network_capture.anonymize_ips = security_config.should_anonymize_data()
@@ -648,22 +676,37 @@ def start_real_monitoring():
         # Try to start monitoring, fall back to simulation if needed
         success = real_network_capture.start_monitoring(duration=duration)
         
-        if success:
+        # Give it a moment to start and check if it's actually capturing
+        time.sleep(1)
+        if success and real_network_capture.is_monitoring:
             is_real_monitoring = True
             return jsonify({
                 'status': 'success',
-                'message': 'Real network monitoring started',
+                'message': 'Real network monitoring started successfully',
+                'mode': 'real_capture',
                 'monitoring_duration': duration,
                 'security_settings': {
                     'anonymize_ips': real_network_capture.anonymize_ips,
                     'capture_payload': real_network_capture.capture_payload,
                     'max_packets': limits['max_packets_per_session']
                 },
+                'admin_privileges': check_admin_privileges(),
                 'timestamp': datetime.now().isoformat()
             })
         else:
             # Fall back to enhanced simulation mode for demonstration
             print("Real packet capture not available, starting enhanced simulation mode...")
+            print("This is likely due to insufficient privileges or network interface issues.")
+            
+            # Ensure we have a capture object for simulation
+            if not real_network_capture:
+                real_network_capture = RealNetworkCapture(interface=interface)
+                real_network_capture.anonymize_ips = security_config.should_anonymize_data()
+                real_network_capture.capture_payload = security_config.should_capture_payload()
+            
+            # Initialize timing for simulation
+            real_network_capture.start_time = datetime.now()
+            real_network_capture.packet_count = 0
             
             # Start enhanced simulation that mimics real monitoring
             def simulate_real_monitoring():
@@ -713,7 +756,9 @@ def start_real_monitoring():
                     'capture_payload': real_network_capture.capture_payload,
                     'max_packets': limits['max_packets_per_session']
                 },
-                'note': 'Using enhanced simulation for demonstration purposes',
+                'admin_privileges': check_admin_privileges(),
+                'note': 'Real packet capture requires administrator privileges. Using simulation mode for demonstration.',
+                'recommendation': 'To capture real network traffic, restart the application as administrator.',
                 'timestamp': datetime.now().isoformat()
             })
         
@@ -729,27 +774,38 @@ def stop_real_monitoring():
     global real_network_capture, is_real_monitoring
     
     try:
+        print(f"Stop monitoring request received. Current state: is_real_monitoring={is_real_monitoring}")
+        
         if not is_real_monitoring:
+            print("Monitoring was not active, but stopping anyway for UI consistency")
             return jsonify({
                 'status': 'warning',
-                'message': 'Real network monitoring not active'
+                'message': 'Real network monitoring was not active, but UI has been reset'
             })
         
         if real_network_capture:
+            print("Stopping real network capture...")
             real_network_capture.stop_monitoring()
+            print("Real network capture stopped successfully")
+        else:
+            print("No real_network_capture object found")
         
         is_real_monitoring = False
+        print("is_real_monitoring set to False")
         
         return jsonify({
             'status': 'success',
-            'message': 'Real network monitoring stopped',
+            'message': 'Real network monitoring stopped successfully',
             'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
+        print(f"Error stopping monitoring: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': f'Error stopping monitoring: {str(e)}'
         }), 500
 
 @app.route('/api/real_monitoring_stats')
@@ -809,6 +865,192 @@ def real_monitoring_stats():
         return jsonify({
             'status': 'error',
             'message': str(e)
+        }), 500
+
+@app.route('/api/anomaly_details')
+def anomaly_details():
+    """Get detailed information about detected anomalies"""
+    global real_network_capture, is_real_monitoring
+    
+    try:
+        if not is_real_monitoring or not real_network_capture:
+            return jsonify({
+                'status': 'inactive',
+                'message': 'Real network monitoring not active',
+                'anomalies': []
+            })
+        
+        # Get recent anomalies with full details
+        recent_anomalies = real_network_capture.get_recent_anomalies(20)  # Last 20 anomalies
+        
+        # Get anomaly summary
+        if hasattr(real_network_capture, '_generate_anomaly_summary'):
+            summary = real_network_capture._generate_anomaly_summary()
+        else:
+            summary = {'total': len(recent_anomalies)}
+        
+        return jsonify({
+            'status': 'success',
+            'total_anomalies': real_network_capture.anomaly_count if hasattr(real_network_capture, 'anomaly_count') else 0,
+            'summary': summary,
+            'recent_anomalies': recent_anomalies,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'anomalies': []
+        }), 500
+
+@app.route('/api/export_anomaly_report')
+def export_anomaly_report():
+    """Export detailed anomaly report"""
+    global real_network_capture, is_real_monitoring
+    
+    try:
+        if not is_real_monitoring or not real_network_capture:
+            return jsonify({
+                'status': 'error',
+                'message': 'Real network monitoring not active'
+            }), 400
+        
+        # Export the report
+        filename = real_network_capture.export_anomaly_report()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Anomaly report exported successfully',
+            'filename': filename,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/reset_monitoring_state', methods=['POST'])
+def reset_monitoring_state():
+    """Reset monitoring state to fix stuck states"""
+    global real_network_capture, is_real_monitoring
+    
+    try:
+        print("Resetting monitoring state...")
+        
+        # Stop any existing monitoring
+        if real_network_capture:
+            try:
+                real_network_capture.stop_monitoring()
+            except:
+                pass  # Ignore errors when stopping
+        
+        # Reset global state
+        is_real_monitoring = False
+        real_network_capture = None
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Monitoring state reset successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Error resetting state: {str(e)}'
+        }), 500
+
+@app.route('/api/inject_test_anomalies', methods=['POST'])
+def inject_test_anomalies():
+    """Inject test anomalies for demonstration purposes"""
+    global real_network_capture, is_real_monitoring
+    
+    try:
+        # Ensure we have a capture object
+        if not real_network_capture:
+            real_network_capture = RealNetworkCapture()
+            real_network_capture.anonymize_ips = security_config.should_anonymize_data()
+            real_network_capture.capture_payload = security_config.should_capture_payload()
+            real_network_capture.start_time = datetime.now()
+        
+        # Create test anomalies
+        test_anomalies = [
+            {
+                'id': 9001,
+                'timestamp': datetime.now().isoformat(),
+                'src_ip': '192.168.1.100',
+                'dst_ip': '10.0.0.50',
+                'src_port': 54321,
+                'dst_port': 4444,
+                'protocol': 'TCP',
+                'transport': 'TCP',
+                'flags': 'SYN',
+                'size': 60,
+                'is_suspicious': True,
+                'risk_indicators': ['known_malicious_port']
+            },
+            {
+                'id': 9002,
+                'timestamp': datetime.now().isoformat(),
+                'src_ip': '203.0.113.45',
+                'dst_ip': '192.168.1.100',
+                'src_port': 45678,
+                'dst_port': 22,
+                'protocol': 'TCP',
+                'transport': 'TCP',
+                'flags': 'FIN,SYN',
+                'size': 40,
+                'is_suspicious': True,
+                'risk_indicators': ['stealth_scan_attempt']
+            },
+            {
+                'id': 9003,
+                'timestamp': datetime.now().isoformat(),
+                'src_ip': '192.168.1.100',
+                'dst_ip': '198.51.100.25',
+                'src_port': 55555,
+                'dst_port': 5555,
+                'protocol': 'TCP',
+                'transport': 'TCP',
+                'flags': 'PSH,ACK',
+                'size': 1800,
+                'is_suspicious': True,
+                'risk_indicators': ['known_malicious_port', 'oversized_packet']
+            }
+        ]
+        
+        # Inject the anomalies
+        injected_count = 0
+        for anomaly in test_anomalies:
+            try:
+                real_network_capture._log_detailed_anomaly(anomaly)
+                
+                # Also add to captured packets for consistency
+                real_network_capture.captured_packets.append(anomaly)
+                real_network_capture.packet_count += 1
+                
+                injected_count += 1
+            except Exception as e:
+                print(f"Error injecting anomaly: {e}")
+        
+        # Set monitoring as active
+        is_real_monitoring = True
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Successfully injected {injected_count} test anomalies',
+            'anomalies_injected': injected_count,
+            'total_anomalies': real_network_capture.anomaly_count if hasattr(real_network_capture, 'anomaly_count') else injected_count,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to inject test anomalies: {str(e)}'
         }), 500
 
 @app.route('/api/network_interfaces')

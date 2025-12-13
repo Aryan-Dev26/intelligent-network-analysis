@@ -48,6 +48,10 @@ class RealNetworkCapture:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
         
+        # Detailed anomaly tracking
+        self.anomaly_details = deque(maxlen=1000)  # Store detailed anomaly information
+        self.anomaly_count = 0
+        self.process_mapping = {}  # Map ports to processes when possible
         # Security checks
         self._perform_security_checks()
     
@@ -192,6 +196,10 @@ class RealNetworkCapture:
             packet_info['is_suspicious'] = self._analyze_packet_security(packet_info)
             packet_info['risk_indicators'] = self._get_risk_indicators(packet_info)
             
+            # Detailed anomaly tracking
+            if packet_info['is_suspicious']:
+                self._log_detailed_anomaly(packet_info)
+            
             # Payload handling (if enabled and safe)
             if self.capture_payload and Raw in packet:
                 payload = packet[Raw].load
@@ -249,82 +257,426 @@ class RealNetworkCapture:
     def _is_packet_allowed(self, packet_info: Dict) -> bool:
         """Check if packet should be captured based on security rules"""
         
-        # Check port whitelist
         dst_port = packet_info.get('dst_port', 0)
         src_port = packet_info.get('src_port', 0)
         
-        if self.whitelist_ports:
-            if dst_port not in self.whitelist_ports and src_port not in self.whitelist_ports:
+        # Expanded whitelist to include more legitimate services
+        expanded_whitelist = [
+            80, 443,           # HTTP/HTTPS
+            53,                # DNS
+            22,                # SSH
+            21, 20,            # FTP
+            25, 587, 465,      # SMTP
+            993, 995, 110, 143, # Email
+            123,               # NTP
+            3389,              # RDP
+            5985, 5986,        # WinRM
+        ] + list(range(49152, 65535))  # Windows dynamic port range
+        
+        # Use expanded whitelist if original is too restrictive
+        if self.whitelist_ports and len(self.whitelist_ports) < 10:
+            # Original whitelist is too restrictive, use expanded
+            active_whitelist = expanded_whitelist
+        else:
+            active_whitelist = self.whitelist_ports
+        
+        if active_whitelist:
+            if dst_port not in active_whitelist and src_port not in active_whitelist:
                 return False
         
-        # Check packet size
-        if packet_info.get('size', 0) > self.max_packet_size:
+        # Check packet size (more lenient)
+        if packet_info.get('size', 0) > self.max_packet_size * 2:  # Allow larger packets
             return False
         
-        # Block private/internal communications if anonymization is on
-        if self.anonymize_ips:
-            src_ip = packet_info.get('src_ip', '')
-            dst_ip = packet_info.get('dst_ip', '')
-            
-            # Skip localhost traffic
-            if '127.0.0.1' in src_ip or '127.0.0.1' in dst_ip:
-                return False
+        # Don't block internal communications - they're legitimate
+        # Only skip localhost if specifically requested
+        src_ip = packet_info.get('src_ip', '')
+        dst_ip = packet_info.get('dst_ip', '')
+        
+        # Only skip loopback if both are loopback (pure localhost communication)
+        if ('127.0.0.1' in src_ip and '127.0.0.1' in dst_ip):
+            return False
         
         return True
     
     def _analyze_packet_security(self, packet_info: Dict) -> bool:
-        """Analyze packet for suspicious characteristics"""
+        """Analyze packet for suspicious characteristics with improved accuracy"""
         suspicious_indicators = 0
         
-        # Check for suspicious ports
-        suspicious_ports = [4444, 5555, 6666, 1234, 31337, 12345]
         dst_port = packet_info.get('dst_port', 0)
         src_port = packet_info.get('src_port', 0)
-        
-        if dst_port in suspicious_ports or src_port in suspicious_ports:
-            suspicious_indicators += 1
-        
-        # Check for unusual packet sizes
-        size = packet_info.get('size', 0)
-        if size < 40 or size > 1400:
-            suspicious_indicators += 1
-        
-        # Check for suspicious flags
+        src_ip = packet_info.get('src_ip', '')
+        dst_ip = packet_info.get('dst_ip', '')
         flags = packet_info.get('flags', '')
-        if 'RST' in flags and 'SYN' in flags:
+        size = packet_info.get('size', 0)
+        
+        # Define legitimate services to avoid false positives
+        legitimate_ports = {
+            80, 443,    # HTTP/HTTPS
+            53,         # DNS
+            22,         # SSH
+            21, 20,     # FTP
+            25, 587, 465, 993, 995, 110, 143,  # Email
+            123,        # NTP
+            161, 162,   # SNMP
+            389, 636,   # LDAP
+            3389,       # RDP
+            5985, 5986, # WinRM
+        }
+        
+        # Windows/Microsoft legitimate high ports
+        windows_service_ports = range(49152, 65535)  # Windows dynamic port range
+        
+        # 1. Check for truly suspicious ports (not just any high port)
+        malicious_ports = [4444, 5555, 6666, 1234, 31337, 12345, 6667, 6668, 1337]
+        if dst_port in malicious_ports or src_port in malicious_ports:
+            suspicious_indicators += 2  # High weight for known bad ports
+        
+        # 2. Improved port scan detection - look for patterns, not individual packets
+        # Only flag as port scan if it's NOT to legitimate services
+        if flags == 'SYN' and dst_port not in legitimate_ports:
+            # Additional checks for real port scans
+            if dst_port < 1024 and dst_port not in [22, 23, 25, 53, 80, 110, 143, 443, 993, 995]:
+                suspicious_indicators += 1
+        
+        # 3. Check for suspicious flag combinations (actual attack patterns)
+        if 'RST' in flags and 'SYN' in flags:  # Invalid flag combination
+            suspicious_indicators += 2
+        if 'FIN' in flags and 'SYN' in flags:  # Stealth scan
+            suspicious_indicators += 2
+        if flags == 'FIN':  # FIN scan
             suspicious_indicators += 1
         
+        # 4. Size-based detection (more refined)
+        if size < 20:  # Unusually small packets
+            suspicious_indicators += 1
+        elif size > 1500:  # Larger than standard MTU
+            suspicious_indicators += 1
+        
+        # 5. IP-based checks (if not anonymized)
+        if not self.anonymize_ips:
+            # Check for external IPs scanning internal networks
+            if self._is_external_ip(src_ip) and self._is_internal_ip(dst_ip):
+                if dst_port not in legitimate_ports:
+                    suspicious_indicators += 2
+        
+        # 6. Frequency-based detection would go here (requires state tracking)
+        # For now, we'll be more conservative
+        
+        # Balanced threshold - catch real threats but reduce false positives
         return suspicious_indicators >= 2
     
     def _get_risk_indicators(self, packet_info: Dict) -> List[str]:
-        """Get list of risk indicators for the packet"""
+        """Get list of risk indicators for the packet with improved accuracy"""
         indicators = []
         
         dst_port = packet_info.get('dst_port', 0)
         src_port = packet_info.get('src_port', 0)
         size = packet_info.get('size', 0)
         flags = packet_info.get('flags', '')
+        src_ip = packet_info.get('src_ip', '')
+        dst_ip = packet_info.get('dst_ip', '')
         
-        # Port-based indicators
-        if dst_port < 1024 and src_port > 50000:
-            indicators.append('high_port_to_privileged')
+        # Define legitimate services
+        legitimate_ports = {80, 443, 53, 22, 21, 25, 587, 465, 993, 995, 110, 143, 123}
+        malicious_ports = [4444, 5555, 6666, 1234, 31337, 12345, 6667, 6668, 1337]
         
-        if dst_port in [4444, 5555, 6666]:
-            indicators.append('suspicious_port')
+        # 1. Truly suspicious ports only
+        if dst_port in malicious_ports or src_port in malicious_ports:
+            indicators.append('known_malicious_port')
         
-        # Size-based indicators
-        if size > 1400:
-            indicators.append('large_packet')
-        elif size < 60:
-            indicators.append('small_packet')
+        # 2. Refined port scan detection
+        if flags == 'SYN' and dst_port not in legitimate_ports and dst_port < 1024:
+            indicators.append('potential_port_scan')
         
-        # Flag-based indicators
-        if flags == 'SYN':
-            indicators.append('syn_scan_possible')
-        elif 'RST' in flags:
-            indicators.append('connection_reset')
+        # 3. Stealth scan techniques
+        if 'RST' in flags and 'SYN' in flags:
+            indicators.append('invalid_flag_combination')
+        if 'FIN' in flags and 'SYN' in flags:
+            indicators.append('stealth_scan_attempt')
+        if flags == 'FIN' and dst_port not in legitimate_ports:
+            indicators.append('fin_scan')
+        
+        # 4. Size anomalies (more specific)
+        if size > 1500:
+            indicators.append('oversized_packet')
+        elif size < 20:
+            indicators.append('undersized_packet')
+        
+        # 5. Connection patterns
+        if 'RST' in flags and dst_port in legitimate_ports:
+            indicators.append('service_rejection')  # Less suspicious
+        
+        # 6. Remove overly broad indicators that cause false positives
+        # No longer flagging normal high-port connections or simple SYN packets
         
         return indicators
+    
+    def _is_internal_ip(self, ip: str) -> bool:
+        """Check if IP is in private/internal range"""
+        if not ip or ip == "anonymized_ip":
+            return True
+        
+        # Private IP ranges
+        private_ranges = [
+            ('10.0.0.0', '10.255.255.255'),
+            ('172.16.0.0', '172.31.255.255'),
+            ('192.168.0.0', '192.168.255.255'),
+            ('127.0.0.0', '127.255.255.255'),  # Loopback
+            ('169.254.0.0', '169.254.255.255'),  # Link-local
+        ]
+        
+        try:
+            import ipaddress
+            ip_obj = ipaddress.ip_address(ip)
+            return ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local
+        except:
+            return True  # Assume internal if can't parse
+    
+    def _is_external_ip(self, ip: str) -> bool:
+        """Check if IP is external/public"""
+        return not self._is_internal_ip(ip)
+    
+    def _log_detailed_anomaly(self, packet_info: Dict):
+        """Log detailed information about detected anomalies"""
+        try:
+            self.anomaly_count += 1
+            
+            # Get process information if possible
+            process_info = self._get_process_for_port(packet_info.get('src_port', 0))
+            
+            # Create detailed anomaly record
+            anomaly_detail = {
+                'anomaly_id': self.anomaly_count,
+                'timestamp': packet_info['timestamp'],
+                'detection_time': datetime.now().isoformat(),
+                'packet_info': {
+                    'src_ip': packet_info.get('src_ip', 'unknown'),
+                    'dst_ip': packet_info.get('dst_ip', 'unknown'),
+                    'src_port': packet_info.get('src_port', 0),
+                    'dst_port': packet_info.get('dst_port', 0),
+                    'protocol': packet_info.get('protocol', 'unknown'),
+                    'transport': packet_info.get('transport', 'unknown'),
+                    'flags': packet_info.get('flags', ''),
+                    'size': packet_info.get('size', 0),
+                },
+                'risk_analysis': {
+                    'risk_indicators': packet_info.get('risk_indicators', []),
+                    'risk_score': len(packet_info.get('risk_indicators', [])),
+                    'threat_category': self._categorize_threat(packet_info.get('risk_indicators', [])),
+                },
+                'process_info': process_info,
+                'context': {
+                    'is_internal_src': self._is_internal_ip(packet_info.get('src_ip', '')),
+                    'is_internal_dst': self._is_internal_ip(packet_info.get('dst_ip', '')),
+                    'port_classification': self._classify_port(packet_info.get('dst_port', 0)),
+                    'time_of_day': datetime.now().strftime('%H:%M:%S'),
+                    'day_of_week': datetime.now().strftime('%A'),
+                },
+                'explanation': self._generate_anomaly_explanation(packet_info)
+            }
+            
+            # Store the detailed anomaly
+            self.anomaly_details.append(anomaly_detail)
+            
+            # Log to console for immediate visibility
+            self.logger.warning(f"ANOMALY DETECTED #{self.anomaly_count}")
+            self.logger.warning(f"  Type: {anomaly_detail['risk_analysis']['threat_category']}")
+            self.logger.warning(f"  Source: {packet_info.get('src_ip')}:{packet_info.get('src_port')}")
+            self.logger.warning(f"  Destination: {packet_info.get('dst_ip')}:{packet_info.get('dst_port')}")
+            self.logger.warning(f"  Process: {process_info.get('name', 'Unknown')} (PID: {process_info.get('pid', 'Unknown')})")
+            self.logger.warning(f"  Explanation: {anomaly_detail['explanation']}")
+            
+        except Exception as e:
+            self.logger.error(f"Error logging anomaly details: {e}")
+    
+    def _get_process_for_port(self, port: int) -> Dict[str, Any]:
+        """Try to identify which process is using a specific port"""
+        try:
+            import psutil
+            
+            # Check if we already have this port mapped
+            if port in self.process_mapping:
+                return self.process_mapping[port]
+            
+            # Find process using this port
+            for conn in psutil.net_connections(kind='inet'):
+                if conn.laddr and conn.laddr.port == port:
+                    try:
+                        if conn.pid:
+                            proc = psutil.Process(conn.pid)
+                            process_info = {
+                                'pid': conn.pid,
+                                'name': proc.name(),
+                                'exe': proc.exe() if hasattr(proc, 'exe') else 'unknown',
+                                'cmdline': ' '.join(proc.cmdline()[:3]) if hasattr(proc, 'cmdline') else 'unknown',
+                                'status': conn.status,
+                                'create_time': proc.create_time() if hasattr(proc, 'create_time') else 0
+                            }
+                            
+                            # Cache the result
+                            self.process_mapping[port] = process_info
+                            return process_info
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+            
+            # If no process found
+            return {
+                'pid': 'unknown',
+                'name': 'unknown',
+                'exe': 'unknown',
+                'cmdline': 'unknown',
+                'status': 'unknown',
+                'create_time': 0
+            }
+            
+        except Exception as e:
+            return {
+                'pid': 'error',
+                'name': f'error: {e}',
+                'exe': 'error',
+                'cmdline': 'error',
+                'status': 'error',
+                'create_time': 0
+            }
+    
+    def _categorize_threat(self, risk_indicators: List[str]) -> str:
+        """Categorize the type of threat based on risk indicators"""
+        if not risk_indicators:
+            return 'unknown'
+        
+        # Check for specific threat patterns
+        if any('scan' in indicator for indicator in risk_indicators):
+            return 'port_scan'
+        elif any('malicious_port' in indicator for indicator in risk_indicators):
+            return 'malicious_service'
+        elif any('stealth' in indicator for indicator in risk_indicators):
+            return 'stealth_attack'
+        elif any('oversized' in indicator for indicator in risk_indicators):
+            return 'data_exfiltration'
+        elif any('invalid' in indicator for indicator in risk_indicators):
+            return 'protocol_anomaly'
+        else:
+            return 'suspicious_activity'
+    
+    def _classify_port(self, port: int) -> str:
+        """Classify what type of service typically uses this port"""
+        well_known_ports = {
+            20: 'FTP Data', 21: 'FTP Control', 22: 'SSH', 23: 'Telnet',
+            25: 'SMTP', 53: 'DNS', 67: 'DHCP Server', 68: 'DHCP Client',
+            80: 'HTTP', 110: 'POP3', 143: 'IMAP', 443: 'HTTPS',
+            993: 'IMAPS', 995: 'POP3S', 587: 'SMTP Submission',
+            3389: 'RDP', 5985: 'WinRM HTTP', 5986: 'WinRM HTTPS'
+        }
+        
+        if port in well_known_ports:
+            return f"Well-known ({well_known_ports[port]})"
+        elif port < 1024:
+            return "System/Privileged"
+        elif 1024 <= port < 49152:
+            return "Registered/User"
+        elif 49152 <= port <= 65535:
+            return "Dynamic/Private"
+        else:
+            return "Unknown"
+    
+    def _generate_anomaly_explanation(self, packet_info: Dict) -> str:
+        """Generate a human-readable explanation of why this packet was flagged"""
+        risk_indicators = packet_info.get('risk_indicators', [])
+        src_port = packet_info.get('src_port', 0)
+        dst_port = packet_info.get('dst_port', 0)
+        flags = packet_info.get('flags', '')
+        
+        explanations = []
+        
+        for indicator in risk_indicators:
+            if indicator == 'known_malicious_port':
+                explanations.append(f"Connection to/from known malicious port ({dst_port} or {src_port})")
+            elif indicator == 'potential_port_scan':
+                explanations.append(f"SYN packet to non-standard service port {dst_port}")
+            elif indicator == 'stealth_scan_attempt':
+                explanations.append(f"Stealth scan detected (FIN+SYN flags: {flags})")
+            elif indicator == 'fin_scan':
+                explanations.append(f"FIN scan detected targeting port {dst_port}")
+            elif indicator == 'oversized_packet':
+                explanations.append(f"Unusually large packet ({packet_info.get('size', 0)} bytes)")
+            elif indicator == 'invalid_flag_combination':
+                explanations.append(f"Invalid TCP flag combination: {flags}")
+            else:
+                explanations.append(f"Risk indicator: {indicator}")
+        
+        if not explanations:
+            return "Packet flagged by security algorithm but no specific indicators identified"
+        
+        return "; ".join(explanations)
+    
+    def get_anomaly_details(self) -> List[Dict[str, Any]]:
+        """Get detailed information about all detected anomalies"""
+        return list(self.anomaly_details)
+    
+    def get_recent_anomalies(self, count: int = 10) -> List[Dict[str, Any]]:
+        """Get the most recent anomalies with full details"""
+        return list(self.anomaly_details)[-count:]
+    
+    def export_anomaly_report(self, filename: str = None) -> str:
+        """Export detailed anomaly report to file"""
+        if filename is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"anomaly_report_{timestamp}.json"
+        
+        report = {
+            'report_metadata': {
+                'generated_at': datetime.now().isoformat(),
+                'total_anomalies': self.anomaly_count,
+                'monitoring_duration': str(datetime.now() - self.start_time) if self.start_time else 'unknown',
+                'total_packets_analyzed': self.packet_count
+            },
+            'anomaly_summary': self._generate_anomaly_summary(),
+            'detailed_anomalies': list(self.anomaly_details)
+        }
+        
+        with open(filename, 'w') as f:
+            json.dump(report, f, indent=2)
+        
+        self.logger.info(f"Anomaly report exported to: {filename}")
+        return filename
+    
+    def _generate_anomaly_summary(self) -> Dict[str, Any]:
+        """Generate summary statistics about detected anomalies"""
+        if not self.anomaly_details:
+            return {'total': 0}
+        
+        # Analyze anomaly patterns
+        threat_categories = {}
+        risk_indicators = {}
+        processes_involved = {}
+        ports_targeted = {}
+        
+        for anomaly in self.anomaly_details:
+            # Count threat categories
+            category = anomaly['risk_analysis']['threat_category']
+            threat_categories[category] = threat_categories.get(category, 0) + 1
+            
+            # Count risk indicators
+            for indicator in anomaly['risk_analysis']['risk_indicators']:
+                risk_indicators[indicator] = risk_indicators.get(indicator, 0) + 1
+            
+            # Count processes
+            process_name = anomaly['process_info']['name']
+            processes_involved[process_name] = processes_involved.get(process_name, 0) + 1
+            
+            # Count targeted ports
+            dst_port = anomaly['packet_info']['dst_port']
+            if dst_port:
+                ports_targeted[dst_port] = ports_targeted.get(dst_port, 0) + 1
+        
+        return {
+            'total': len(self.anomaly_details),
+            'threat_categories': dict(sorted(threat_categories.items(), key=lambda x: x[1], reverse=True)),
+            'top_risk_indicators': dict(sorted(risk_indicators.items(), key=lambda x: x[1], reverse=True)[:10]),
+            'processes_involved': dict(sorted(processes_involved.items(), key=lambda x: x[1], reverse=True)[:10]),
+            'most_targeted_ports': dict(sorted(ports_targeted.items(), key=lambda x: x[1], reverse=True)[:10])
+        }
     
     def get_capture_statistics(self) -> Dict[str, Any]:
         """Get statistics about the capture session"""

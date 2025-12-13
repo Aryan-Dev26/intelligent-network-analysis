@@ -62,8 +62,10 @@ class DataProcessor:
         df = df.drop_duplicates()
         print(f"   🗑️ Removed {initial_count - len(df)} duplicate packets")
         
-        # 2. Handle missing values
-        df = df.dropna()
+        # 2. Handle missing values (but keep rows with None attack_type/attack_description)
+        # Only drop rows where essential fields are missing
+        essential_columns = ['src_ip', 'dst_ip', 'src_port', 'dst_port', 'protocol', 'timestamp']
+        df = df.dropna(subset=essential_columns)
         
         # 3. Standardize IP addresses (remove invalid ones)
         df = self._validate_ips(df)
@@ -84,11 +86,25 @@ class DataProcessor:
         
     def _validate_ips(self, df: pd.DataFrame) -> pd.DataFrame:
         """Validate and clean IP addresses"""
-        ip_pattern = r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+        # More flexible IP validation - just check basic format
+        ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+        
+        # Debug: Check some sample IPs
+        if len(df) > 0:
+            print(f"   🔍 Sample IPs: src={df['src_ip'].iloc[0]}, dst={df['dst_ip'].iloc[0]}")
         
         # Remove invalid IPs
         valid_src = df['src_ip'].str.match(ip_pattern, na=False)
         valid_dst = df['dst_ip'].str.match(ip_pattern, na=False)
+        
+        # Debug: Show validation results
+        invalid_src_count = (~valid_src).sum()
+        invalid_dst_count = (~valid_dst).sum()
+        
+        if invalid_src_count > 0:
+            print(f"   ⚠️  Invalid source IPs: {invalid_src_count}")
+        if invalid_dst_count > 0:
+            print(f"   ⚠️  Invalid destination IPs: {invalid_dst_count}")
         
         before_count = len(df)
         df = df[valid_src & valid_dst]
@@ -96,6 +112,8 @@ class DataProcessor:
         
         if removed > 0:
             print(f"   🔍 Removed {removed} packets with invalid IP addresses")
+        else:
+            print(f"   ✅ All {len(df)} packets have valid IP addresses")
             
         return df
         

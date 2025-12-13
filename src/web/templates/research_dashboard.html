@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Network Anomaly Detection - Research Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .research-info {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .research-info h2 {
+            color: #4a5568;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+
+        .card h3 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin: 5px;
+            min-width: 150px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+        }
+
+        .results-container {
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .metric-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2d3748;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-active {
+            background: #48bb78;
+            animation: pulse 2s infinite;
+        }
+
+        .status-inactive {
+            background: #a0aec0;
+        }
+
+        .status-error {
+            background: #f56565;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .algorithm-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .algorithm-card {
+            background: #edf2f7;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .algorithm-card.active {
+            border-color: #667eea;
+            background: #e6fffa;
+        }
+
+        .realtime-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .metric-card {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .metric-card h4 {
+            color: #4a5568;
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+
+        .metric-card .value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2d3748;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: white;
+            opacity: 0.8;
+        }
+
+        .research-links {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .research-links a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .research-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Advanced Network Anomaly Detection with AI</h1>
+            <p>Research-Grade Ensemble Learning System with Threat Intelligence | Aryan Pravin Sahu | IIT Ropar</p>
+        </div>
+
+        <div class="research-info">
+            <h2>Research Overview</h2>
+            <p><strong>Objective:</strong> Develop an AI-powered ensemble-based real-time network anomaly detection system combining multiple machine learning algorithms with intelligent threat analysis for enhanced cybersecurity in IoT environments.</p>
+            <p><strong>Core Algorithms:</strong> Isolation Forest, DBSCAN, One-Class SVM, LSTM Autoencoder</p>
+            <p><strong>AI Components:</strong> Threat Intelligence Engine, Explainable AI, Behavioral Analysis</p>
+            <p><strong>Focus Areas:</strong> Real-time Processing, AI-driven Threat Analysis, Explainable Security, Japanese University Collaboration</p>
+            
+            <div class="research-links">
+                <a href="/research" target="_blank">Research Methodology</a>
+                <a href="https://github.com/Aryan-Dev26/intelligent-network-analysis" target="_blank">GitHub Repository</a>
+                <a href="#" onclick="downloadResearchPaper()">Research Paper (PDF)</a>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Basic Analysis Card -->
+            <div class="card">
+                <h3>Basic Anomaly Detection</h3>
+                <p>Single-algorithm approach using Isolation Forest for baseline comparison.</p>
+                <button class="btn" onclick="runBasicAnalysis()" id="basicBtn">
+                    Run Basic Analysis
+                </button>
+                <div id="basicResults" class="results-container" style="display: none;">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+
+            <!-- Advanced Analysis Card -->
+            <div class="card">
+                <h3>Advanced Ensemble Detection</h3>
+                <p>Multi-algorithm ensemble with weighted voting and confidence scoring.</p>
+                <button class="btn btn-success" onclick="runAdvancedAnalysis()" id="advancedBtn">
+                    Run Ensemble Analysis
+                </button>
+                <div id="advancedResults" class="results-container" style="display: none;">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+
+            <!-- AI Threat Intelligence Card -->
+            <div class="card">
+                <h3>AI Threat Intelligence</h3>
+                <p>Advanced threat analysis using AI-powered intelligence engine with risk assessment.</p>
+                <button class="btn btn-success" onclick="runAIThreatAnalysis()" id="aiThreatBtn">
+                    Run AI Threat Analysis
+                </button>
+                <div id="aiThreatResults" class="results-container" style="display: none;">
+                    <!-- AI threat analysis results will be populated here -->
+                </div>
+            </div>
+
+            <!-- Explainable AI Card -->
+            <div class="card">
+                <h3>Explainable AI Analysis</h3>
+                <p>Interpretable explanations for anomaly detection decisions with feature analysis.</p>
+                <button class="btn btn-info" onclick="runExplainableAI()" id="explainBtn">
+                    Generate AI Explanation
+                </button>
+                <div id="explainResults" class="results-container" style="display: none;">
+                    <!-- Explainable AI results will be populated here -->
+                </div>
+            </div>
+
+            <!-- Attack Simulation Card -->
+            <div class="card">
+                <h3>Attack Simulation</h3>
+                <p>Realistic cyber attack simulations including port scans, DDoS, data exfiltration, and malware.</p>
+                <button class="btn btn-danger" onclick="runAttackSimulation()" id="attackSimBtn">
+                    Run Attack Simulation
+                </button>
+                <div id="attackSimResults" class="results-container" style="display: none;">
+                    <!-- Attack simulation results will be populated here -->
+                </div>
+            </div>
+
+            <!-- Real-time Processing Card -->
+            <div class="card">
+                <h3>Real-time Stream Processing</h3>
+                <p>Continuous monitoring with sliding window analysis and concept drift detection.</p>
+                <div style="margin-bottom: 15px;">
+                    <span class="status-indicator" id="realtimeStatus"></span>
+                    <span id="realtimeStatusText">Inactive</span>
+                </div>
+                <button class="btn btn-info" onclick="startRealtime()" id="startRealtimeBtn">
+                    Start Real-time Processing
+                </button>
+                <button class="btn btn-danger" onclick="stopRealtime()" id="stopRealtimeBtn" disabled>
+                    Stop Processing
+                </button>
+                <div id="realtimeResults" class="results-container" style="display: none;">
+                    <!-- Real-time metrics will be populated here -->
+                </div>
+            </div>
+
+            <!-- Real Network Monitoring Card -->
+            <div class="card">
+                <h3>🔒 Real Network Monitoring</h3>
+                <p>Secure real-time network traffic capture with privacy controls and ethical compliance.</p>
+                <div style="margin-bottom: 15px;">
+                    <span class="status-indicator" id="realMonitoringStatus"></span>
+                    <span id="realMonitoringStatusText">Inactive</span>
+                </div>
+                <button class="btn btn-success" onclick="showSecuritySettings()" id="securityBtn">
+                    Security Settings
+                </button>
+                <button class="btn btn-info" onclick="startRealMonitoring()" id="startRealBtn">
+                    Start Real Monitoring
+                </button>
+                <button class="btn btn-danger" onclick="stopRealMonitoring()" id="stopRealBtn" disabled>
+                    Stop Monitoring
+                </button>
+                <div id="realMonitoringResults" class="results-container" style="display: none;">
+                    <!-- Real monitoring results will be populated here -->
+                </div>
+            </div>
+
+            <!-- Research Summary Card -->
+            <div class="card">
+                <h3>Research Summary</h3>
+                <p>Comprehensive overview of system capabilities and research contributions.</p>
+                <button class="btn btn-info" onclick="loadResearchSummary()" id="summaryBtn">
+                    Load Research Summary
+                </button>
+                <div id="researchSummary" class="results-container" style="display: none;">
+                    <!-- Research summary will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>🔬 Advanced Cybersecurity Research Platform | AI-Powered Network Anomaly Detection</p>
+            <p>📊 Ensemble Machine Learning • Explainable AI • Real-time Threat Intelligence</p>
+        </div>
+    </div>
+
+    <script>
+        let realtimeInterval = null;
+
+        async function runBasicAnalysis() {
+            const btn = document.getElementById('basicBtn');
+            const results = document.getElementById('basicResults');
+            
+            btn.innerHTML = '<span class="loading"></span>Running Analysis...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/basic_analysis');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    results.innerHTML = `
+                        <h4>✅ Basic Analysis Results</h4>
+                        <div class="metric">
+                            <span class="metric-label">Total Packets:</span>
+                            <span class="metric-value">${data.results.total_packets}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Anomalies Found:</span>
+                            <span class="metric-value">${data.results.anomalies_found}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Anomaly Rate:</span>
+                            <span class="metric-value">${data.results.anomaly_rate}%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Algorithm:</span>
+                            <span class="metric-value">Isolation Forest</span>
+                        </div>
+                    `;
+                    results.style.display = 'block';
+                } else {
+                    results.innerHTML = `<p style="color: red;">❌ Error: ${data.message}</p>`;
+                    results.style.display = 'block';
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">❌ Network Error: ${error.message}</p>`;
+                results.style.display = 'block';
+            }
+            
+            btn.innerHTML = 'Run Basic Analysis';
+            btn.disabled = false;
+        }
+
+        async function runAdvancedAnalysis() {
+            const btn = document.getElementById('advancedBtn');
+            const results = document.getElementById('advancedResults');
+            
+            btn.innerHTML = '<span class="loading"></span>Training Ensemble...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/advanced_analysis');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const summary = data.performance_summary;
+                    const individual = data.individual_models;
+                    const ensemble = data.ensemble_results;
+                    
+                    results.innerHTML = `
+                        <h4>🚀 Advanced Ensemble Results</h4>
+                        <div class="metric">
+                            <span class="metric-label">Total Packets:</span>
+                            <span class="metric-value">${summary.total_packets}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Ensemble Anomalies:</span>
+                            <span class="metric-value">${ensemble.total_anomalies}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Ensemble Rate:</span>
+                            <span class="metric-value">${summary.anomaly_rate.toFixed(1)}%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Average Confidence:</span>
+                            <span class="metric-value">${ensemble.average_confidence.toFixed(3)}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Model Agreement:</span>
+                            <span class="metric-value">${summary.model_agreement.toFixed(3)}</span>
+                        </div>
+                        
+                        <h5 style="margin-top: 20px; color: #4a5568;">Individual Model Results:</h5>
+                        <div class="algorithm-grid">
+                            ${Object.entries(individual).map(([model, count]) => `
+                                <div class="algorithm-card">
+                                    <strong>${model.replace('_', ' ').toUpperCase()}</strong><br>
+                                    <span style="font-size: 1.2rem; color: #667eea;">${count} anomalies</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    results.style.display = 'block';
+                } else {
+                    results.innerHTML = `<p style="color: red;">❌ Error: ${data.message}</p>`;
+                    results.style.display = 'block';
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">❌ Network Error: ${error.message}</p>`;
+                results.style.display = 'block';
+            }
+            
+            btn.innerHTML = 'Run Ensemble Analysis';
+            btn.disabled = false;
+        }
+
+        async function startRealtime() {
+            const startBtn = document.getElementById('startRealtimeBtn');
+            const stopBtn = document.getElementById('stopRealtimeBtn');
+            const status = document.getElementById('realtimeStatus');
+            const statusText = document.getElementById('realtimeStatusText');
+            
+            startBtn.innerHTML = '<span class="loading"></span>Starting...';
+            startBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/start_realtime');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    status.className = 'status-indicator status-active';
+                    statusText.textContent = 'Active';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    
+                    // Start polling for metrics
+                    realtimeInterval = setInterval(updateRealtimeMetrics, 2000);
+                    
+                    document.getElementById('realtimeResults').style.display = 'block';
+                } else {
+                    alert(`Error: ${data.message}`);
+                }
+            } catch (error) {
+                alert(`Network Error: ${error.message}`);
+            }
+            
+            startBtn.innerHTML = 'Start Real-time Processing';
+            startBtn.disabled = false;
+        }
+
+        async function stopRealtime() {
+            const startBtn = document.getElementById('startRealtimeBtn');
+            const stopBtn = document.getElementById('stopRealtimeBtn');
+            const status = document.getElementById('realtimeStatus');
+            const statusText = document.getElementById('realtimeStatusText');
+            
+            try {
+                const response = await fetch('/api/stop_realtime');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    status.className = 'status-indicator status-inactive';
+                    statusText.textContent = 'Inactive';
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    
+                    // Stop polling
+                    if (realtimeInterval) {
+                        clearInterval(realtimeInterval);
+                        realtimeInterval = null;
+                    }
+                }
+            } catch (error) {
+                alert(`Network Error: ${error.message}`);
+            }
+        }
+
+        async function updateRealtimeMetrics() {
+            try {
+                const response = await fetch('/api/realtime_metrics');
+                const data = await response.json();
+                
+                if (data.status === 'active') {
+                    const metrics = data.metrics;
+                    const alerts = data.alerts;
+                    
+                    document.getElementById('realtimeResults').innerHTML = `
+                        <h4>📊 Real-time Metrics</h4>
+                        <div class="realtime-metrics">
+                            <div class="metric-card">
+                                <h4>Packets Processed</h4>
+                                <div class="value">${metrics.packets_processed}</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Total Anomalies</h4>
+                                <div class="value">${metrics.total_anomalies}</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Recent Rate</h4>
+                                <div class="value">${metrics.recent_anomaly_rate.toFixed(1)}%</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Avg Processing</h4>
+                                <div class="value">${(metrics.avg_processing_time * 1000).toFixed(1)}ms</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Buffer Usage</h4>
+                                <div class="value">${metrics.buffer_utilization.toFixed(1)}%</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Active Alerts</h4>
+                                <div class="value">${alerts.total_active}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error updating metrics:', error);
+            }
+        }
+
+        async function loadResearchSummary() {
+            const btn = document.getElementById('summaryBtn');
+            const results = document.getElementById('researchSummary');
+            
+            btn.innerHTML = '<span class="loading"></span>Loading...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/research_summary');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const cap = data.capabilities;
+                    
+                    results.innerHTML = `
+                        <h4>🔬 Research System Capabilities</h4>
+                        
+                        <h5 style="margin-top: 15px; color: #4a5568;">Machine Learning Algorithms:</h5>
+                        <div class="algorithm-grid">
+                            ${cap.algorithms.map(alg => `
+                                <div class="algorithm-card active">
+                                    ${alg}
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <h5 style="margin-top: 15px; color: #4a5568;">Key Features:</h5>
+                        <ul style="margin-left: 20px; margin-top: 10px;">
+                            ${cap.features.map(feature => `<li>${feature}</li>`).join('')}
+                        </ul>
+                        
+                        <h5 style="margin-top: 15px; color: #4a5568;">Research Focus Areas:</h5>
+                        <ul style="margin-left: 20px; margin-top: 10px;">
+                            ${cap.research_focus.map(focus => `<li>${focus}</li>`).join('')}
+                        </ul>
+                        
+                        <div class="metric" style="margin-top: 15px;">
+                            <span class="metric-label">Research Methodology:</span>
+                            <span class="metric-value">${data.methodology_available ? '✅ Available' : '❌ Not Found'}</span>
+                        </div>
+                    `;
+                    results.style.display = 'block';
+                } else {
+                    results.innerHTML = `<p style="color: red;">❌ Error: ${data.message}</p>`;
+                    results.style.display = 'block';
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">❌ Network Error: ${error.message}</p>`;
+                results.style.display = 'block';
+            }
+            
+            btn.innerHTML = 'Load Research Summary';
+            btn.disabled = false;
+        }
+
+        async function runAIThreatAnalysis() {
+            const btn = document.getElementById('aiThreatBtn');
+            const results = document.getElementById('aiThreatResults');
+            
+            btn.innerHTML = '<span class="loading"></span>Running AI Analysis...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/ai_threat_analysis');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const summary = data.summary;
+                    const threats = data.threat_analysis;
+                    
+                    results.innerHTML = `
+                        <h4>AI Threat Intelligence Results</h4>
+                        <div class="metric">
+                            <span class="metric-label">Total Packets Analyzed:</span>
+                            <span class="metric-value">${data.total_packets}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Anomalies Analyzed:</span>
+                            <span class="metric-value">${data.anomalies_analyzed}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Average Risk Score:</span>
+                            <span class="metric-value">${summary.avg_risk_score.toFixed(1)}/100</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">High Risk Threats:</span>
+                            <span class="metric-value">${summary.high_risk_count}</span>
+                        </div>
+                        
+                        <h5 style="margin-top: 20px; color: #4a5568;">Threat Analysis Details:</h5>
+                        <div class="algorithm-grid">
+                            ${threats.map((threat, index) => `
+                                <div class="algorithm-card">
+                                    <strong>Packet ${threat.packet_index}</strong><br>
+                                    <span style="color: #e53e3e;">Risk: ${threat.threat_analysis.risk_score}/100</span><br>
+                                    <span style="font-size: 0.9rem;">${threat.threat_analysis.threat_type}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <h5 style="margin-top: 15px; color: #4a5568;">Detected Threat Types:</h5>
+                        <p>${summary.threat_types.join(', ') || 'No specific threats identified'}</p>
+                    `;
+                    results.style.display = 'block';
+                } else {
+                    results.innerHTML = `<p style="color: red;">Error: ${data.message}</p>`;
+                    results.style.display = 'block';
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">Network Error: ${error.message}</p>`;
+                results.style.display = 'block';
+            }
+            
+            btn.innerHTML = 'Run AI Threat Analysis';
+            btn.disabled = false;
+        }
+
+        async function runExplainableAI() {
+            const btn = document.getElementById('explainBtn');
+            const results = document.getElementById('explainResults');
+            
+            btn.innerHTML = '<span class="loading"></span>Generating Explanation...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/explain_anomaly');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    if (data.message) {
+                        results.innerHTML = `
+                            <h4>Explainable AI Analysis</h4>
+                            <p>${data.message}</p>
+                        `;
+                    } else {
+                        const explanation = data.explanation;
+                        
+                        results.innerHTML = `
+                            <h4>Explainable AI Analysis</h4>
+                            <div class="metric">
+                                <span class="metric-label">Anomaly Index:</span>
+                                <span class="metric-value">${data.anomaly_index}</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Explanation Confidence:</span>
+                                <span class="metric-value">${explanation.confidence.toUpperCase()}</span>
+                            </div>
+                            
+                            <h5 style="margin-top: 20px; color: #4a5568;">Natural Language Explanation:</h5>
+                            <p style="background: #f7fafc; padding: 15px; border-radius: 8px; font-style: italic;">
+                                "${explanation.summary}"
+                            </p>
+                            
+                            <h5 style="margin-top: 15px; color: #4a5568;">Top Contributing Features:</h5>
+                            <div class="algorithm-grid">
+                                ${explanation.top_features.map(feature => `
+                                    <div class="algorithm-card">
+                                        <strong>${feature.contribution.description}</strong><br>
+                                        <span style="color: #667eea;">Score: ${feature.contribution.contribution_score.toFixed(3)}</span><br>
+                                        <span style="font-size: 0.9rem;">Value: ${feature.contribution.value.toFixed(2)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            
+                            <h5 style="margin-top: 15px; color: #4a5568;">Technical Summary:</h5>
+                            <p style="font-family: monospace; background: #f7fafc; padding: 10px; border-radius: 4px;">
+                                ${explanation.technical_summary}
+                            </p>
+                        `;
+                    }
+                    results.style.display = 'block';
+                } else {
+                    results.innerHTML = `<p style="color: red;">Error: ${data.message}</p>`;
+                    results.style.display = 'block';
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">Network Error: ${error.message}</p>`;
+                results.style.display = 'block';
+            }
+            
+            btn.innerHTML = 'Generate AI Explanation';
+            btn.disabled = false;
+        }
+
+        async function runAttackSimulation() {
+            const btn = document.getElementById('attackSimBtn');
+            const results = document.getElementById('attackSimResults');
+            
+            btn.innerHTML = '<span class="loading"></span>Running Attack Simulation...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/attack_simulation');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const summary = data.simulation_summary;
+                    const details = data.attack_details;
+                    
+                    results.innerHTML = `
+                        <h4>Attack Simulation Results</h4>
+                        <div class="metric">
+                            <span class="metric-label">Total Packets Generated:</span>
+                            <span class="metric-value">${data.total_packets}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Normal Traffic:</span>
+                            <span class="metric-value">${data.normal_packets}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Attack Packets:</span>
+                            <span class="metric-value">${data.attack_packets}</span>
+                        </div>
+                        
+                        <h5 style="margin-top: 20px; color: #4a5568;">Attack Types Simulated:</h5>
+                        <div class="algorithm-grid">
+                            <div class="algorithm-card ${summary.port_scans > 0 ? 'active' : ''}">
+                                <strong>Port Scans</strong><br>
+                                <span style="color: #f56565;">${summary.port_scans} packets</span>
+                            </div>
+                            <div class="algorithm-card ${summary.ddos_attacks > 0 ? 'active' : ''}">
+                                <strong>DDoS Attacks</strong><br>
+                                <span style="color: #f56565;">${summary.ddos_attacks} packets</span>
+                            </div>
+                            <div class="algorithm-card ${summary.data_exfiltration > 0 ? 'active' : ''}">
+                                <strong>Data Exfiltration</strong><br>
+                                <span style="color: #f56565;">${summary.data_exfiltration} packets</span>
+                            </div>
+                            <div class="algorithm-card ${summary.malware_beacons > 0 ? 'active' : ''}">
+                                <strong>Malware Beacons</strong><br>
+                                <span style="color: #f56565;">${summary.malware_beacons} packets</span>
+                            </div>
+                        </div>
+                        
+                        <h5 style="margin-top: 15px; color: #4a5568;">Sample Attack Details:</h5>
+                        <div style="max-height: 200px; overflow-y: auto;">
+                            ${details.map(attack => `
+                                <div style="background: #fff5f5; padding: 10px; margin: 5px 0; border-radius: 5px; border-left: 3px solid #f56565;">
+                                    <strong>${attack.attack_type.toUpperCase()}</strong>: ${attack.description}<br>
+                                    <small>${attack.src_ip} → ${attack.dst_ip}:${attack.dst_port} (${attack.protocol}, ${attack.size} bytes)</small>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    results.style.display = 'block';
+                } else {
+                    results.innerHTML = `<p style="color: red;">Error: ${data.message}</p>`;
+                    results.style.display = 'block';
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">Network Error: ${error.message}</p>`;
+                results.style.display = 'block';
+            }
+            
+            btn.innerHTML = 'Run Attack Simulation';
+            btn.disabled = false;
+        }
+
+        async function showSecuritySettings() {
+            const btn = document.getElementById('securityBtn');
+            const results = document.getElementById('realMonitoringResults');
+            
+            btn.innerHTML = '<span class="loading"></span>Loading...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/security_status');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const privacy = data.privacy_settings;
+                    const limits = data.capture_limits;
+                    
+                    results.innerHTML = `
+                        <h4>🔒 Security Configuration</h4>
+                        
+                        <h5 style="margin-top: 15px; color: #4a5568;">Privacy Protection:</h5>
+                        <div class="metric">
+                            <span class="metric-label">IP Anonymization:</span>
+                            <span class="metric-value">${privacy.anonymize_ips ? '✅ Enabled' : '❌ Disabled'}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Payload Capture:</span>
+                            <span class="metric-value">${privacy.capture_payload ? '⚠️ Enabled' : '✅ Disabled'}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Data Retention:</span>
+                            <span class="metric-value">${privacy.data_retention_days} days</span>
+                        </div>
+                        
+                        <h5 style="margin-top: 15px; color: #4a5568;">Capture Limits:</h5>
+                        <div class="metric">
+                            <span class="metric-label">Max Packets per Session:</span>
+                            <span class="metric-value">${limits.max_packets_per_session.toLocaleString()}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Max Session Duration:</span>
+                            <span class="metric-value">${limits.max_session_duration_minutes} minutes</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Rate Limit:</span>
+                            <span class="metric-value">${limits.rate_limit_packets_per_second} packets/sec</span>
+                        </div>
+                        
+                        <div style="background: #e6fffa; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #38b2ac;">
+                            <strong>⚠️ Ethical Notice:</strong><br>
+                            Real network monitoring captures actual network traffic. Only use on networks you own or have explicit permission to monitor. 
+                            All data is anonymized and automatically deleted after ${privacy.data_retention_days} days.
+                        </div>
+                    `;
+                    results.style.display = 'block';
+                } else {
+                    results.innerHTML = `<p style="color: red;">❌ Error: ${data.message}</p>`;
+                    results.style.display = 'block';
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: red;">❌ Network Error: ${error.message}</p>`;
+                results.style.display = 'block';
+            }
+            
+            btn.innerHTML = 'Security Settings';
+            btn.disabled = false;
+        }
+
+        async function startRealMonitoring() {
+            const startBtn = document.getElementById('startRealBtn');
+            const stopBtn = document.getElementById('stopRealBtn');
+            const status = document.getElementById('realMonitoringStatus');
+            const statusText = document.getElementById('realMonitoringStatusText');
+            const results = document.getElementById('realMonitoringResults');
+            
+            // Show consent dialog
+            const consent = confirm(
+                "CONSENT REQUIRED FOR REAL NETWORK MONITORING\n\n" +
+                "This will capture actual network traffic from your system.\n\n" +
+                "Privacy protections:\n" +
+                "• IP addresses will be anonymized\n" +
+                "• Packet payload will NOT be captured\n" +
+                "• Data will be automatically deleted after 7 days\n\n" +
+                "Legal requirements:\n" +
+                "• Only use on networks you own or have permission to monitor\n" +
+                "• Comply with local privacy and cybersecurity laws\n" +
+                "• This tool is for research and educational purposes only\n\n" +
+                "Do you consent to network monitoring?"
+            );
+            
+            if (!consent) {
+                alert("Network monitoring cancelled - consent not granted.");
+                return;
+            }
+            
+            startBtn.innerHTML = '<span class="loading"></span>Starting...';
+            startBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/start_real_monitoring', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        consent_granted: true,
+                        duration: 300  // 5 minutes
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    status.className = 'status-indicator status-active';
+                    statusText.textContent = 'Active - Real Traffic';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    
+                    // Start polling for real monitoring stats
+                    realMonitoringInterval = setInterval(updateRealMonitoringStats, 3000);
+                    
+                    results.innerHTML = `
+                        <h4>🔴 LIVE: Real Network Monitoring Active</h4>
+                        <div class="metric">
+                            <span class="metric-label">Monitoring Duration:</span>
+                            <span class="metric-value">${data.monitoring_duration} seconds</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">IP Anonymization:</span>
+                            <span class="metric-value">${data.security_settings.anonymize_ips ? '✅ Active' : '❌ Inactive'}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Payload Capture:</span>
+                            <span class="metric-value">${data.security_settings.capture_payload ? '⚠️ Active' : '✅ Disabled'}</span>
+                        </div>
+                        <div id="realStatsContainer">
+                            <p>Waiting for network traffic...</p>
+                        </div>
+                    `;
+                    results.style.display = 'block';
+                } else {
+                    if (data.consent_required) {
+                        alert("User consent is required for real network monitoring.");
+                    } else {
+                        alert(`Error: ${data.message}`);
+                    }
+                }
+            } catch (error) {
+                alert(`Network Error: ${error.message}`);
+            }
+            
+            startBtn.innerHTML = 'Start Real Monitoring';
+            startBtn.disabled = false;
+        }
+
+        async function stopRealMonitoring() {
+            const startBtn = document.getElementById('startRealBtn');
+            const stopBtn = document.getElementById('stopRealBtn');
+            const status = document.getElementById('realMonitoringStatus');
+            const statusText = document.getElementById('realMonitoringStatusText');
+            
+            try {
+                const response = await fetch('/api/stop_real_monitoring');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    status.className = 'status-indicator status-inactive';
+                    statusText.textContent = 'Inactive';
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    
+                    // Stop polling
+                    if (realMonitoringInterval) {
+                        clearInterval(realMonitoringInterval);
+                        realMonitoringInterval = null;
+                    }
+                    
+                    // Show final export option
+                    const exportData = confirm("Real network monitoring stopped. Would you like to export the captured data?");
+                    if (exportData) {
+                        exportRealData();
+                    }
+                }
+            } catch (error) {
+                alert(`Network Error: ${error.message}`);
+            }
+        }
+
+        let realMonitoringInterval = null;
+
+        async function updateRealMonitoringStats() {
+            try {
+                const response = await fetch('/api/real_monitoring_stats');
+                const data = await response.json();
+                
+                if (data.status === 'active') {
+                    const stats = data.capture_stats;
+                    const security = data.security_analysis;
+                    const recent = data.recent_packets;
+                    
+                    document.getElementById('realStatsContainer').innerHTML = `
+                        <h5 style="margin-top: 15px; color: #4a5568;">Live Capture Statistics:</h5>
+                        <div class="realtime-metrics">
+                            <div class="metric-card">
+                                <h4>Total Packets</h4>
+                                <div class="value">${stats.total_packets}</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Suspicious</h4>
+                                <div class="value" style="color: ${security.suspicious_packets > 0 ? '#f56565' : '#48bb78'}">${security.suspicious_packets}</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Capture Rate</h4>
+                                <div class="value">${stats.capture_rate ? stats.capture_rate.toFixed(1) : '0'} pkt/s</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Duration</h4>
+                                <div class="value">${stats.capture_duration || '0s'}</div>
+                            </div>
+                        </div>
+                        
+                        ${Object.keys(security.risk_indicators).length > 0 ? `
+                            <h5 style="margin-top: 15px; color: #e53e3e;">⚠️ Risk Indicators Detected:</h5>
+                            <div class="algorithm-grid">
+                                ${Object.entries(security.risk_indicators).map(([indicator, count]) => `
+                                    <div class="algorithm-card" style="border-color: #f56565;">
+                                        <strong>${indicator.replace('_', ' ').toUpperCase()}</strong><br>
+                                        <span style="color: #f56565;">${count} occurrences</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                        
+                        <h5 style="margin-top: 15px; color: #4a5568;">Protocol Distribution:</h5>
+                        <div style="font-family: monospace; background: #f7fafc; padding: 10px; border-radius: 4px;">
+                            ${Object.entries(security.protocol_distribution).map(([protocol, count]) => 
+                                `${protocol}: ${count} packets`
+                            ).join(' | ')}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error updating real monitoring stats:', error);
+            }
+        }
+
+        async function exportRealData() {
+            try {
+                const response = await fetch('/api/export_real_data');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    alert(`Real network data exported successfully!\nFile: ${data.filename}\nPackets: ${data.packet_count}`);
+                } else {
+                    alert(`Export failed: ${data.message}`);
+                }
+            } catch (error) {
+                alert(`Export error: ${error.message}`);
+            }
+        }
+
+        function downloadResearchPaper() {
+            alert('Research paper PDF would be available here. Currently showing methodology at /research');
+            window.open('/research', '_blank');
+        }
+
+        // Initialize status indicators
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('realtimeStatus').className = 'status-indicator status-inactive';
+            document.getElementById('realMonitoringStatus').className = 'status-indicator status-inactive';
+        });
+    </script>
+</body>
+</html>

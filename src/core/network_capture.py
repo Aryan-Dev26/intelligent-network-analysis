@@ -36,9 +36,9 @@ class NetworkCapture:
         duration = end_time - self.start_time
         print(f"⏹️ Monitoring stopped. Duration: {duration}")
         
-    def simulate_packet_capture(self, num_packets: int = 100) -> List[Dict[str, Any]]:
+    def simulate_packet_capture(self, num_packets: int = 100, include_attacks: bool = True) -> List[Dict[str, Any]]:
         """
-        Simulate network packet capture for development
+        Simulate network packet capture with realistic attack patterns
         In real implementation, this would use scapy or similar library
         """
         packets = []
@@ -47,31 +47,192 @@ class NetworkCapture:
         protocols = ['TCP', 'UDP', 'HTTP', 'HTTPS', 'DNS', 'FTP']
         common_ports = [80, 443, 22, 21, 53, 8080, 3000, 5000]
         
-        print(f"📡 Simulating capture of {num_packets} packets...")
+        print(f"Simulating capture of {num_packets} packets with attack patterns...")
+        
+        # Determine attack injection points
+        attack_packets = []
+        if include_attacks and num_packets >= 20:
+            # Inject different types of attacks
+            attack_packets.extend(self._plan_attack_injections(num_packets))
         
         for i in range(num_packets):
-            packet = {
-                'id': i + 1,
-                'timestamp': datetime.now().isoformat(),
-                'src_ip': self._generate_ip(),
-                'dst_ip': self._generate_ip(),
-                'src_port': random.randint(1024, 65535),
-                'dst_port': random.choice(common_ports),
-                'protocol': random.choice(protocols),
-                'size': random.randint(64, 1500),
-                'flags': self._generate_flags(),
-                'payload_preview': f"data_packet_{i}",
-                'is_suspicious': random.random() < 0.05  # 5% suspicious packets
-            }
+            # Check if this packet should be part of an attack
+            attack_info = next((attack for attack in attack_packets if attack['packet_id'] == i), None)
+            
+            if attack_info:
+                packet = self._generate_attack_packet(i, attack_info)
+            else:
+                packet = self._generate_normal_packet(i, protocols, common_ports)
+            
             packets.append(packet)
             
             # Show progress for every 20 packets
             if (i + 1) % 20 == 0:
-                print(f"   📦 Captured {i + 1}/{num_packets} packets")
+                print(f"   Captured {i + 1}/{num_packets} packets")
                 
         self.captured_packets.extend(packets)
-        print(f"✅ Capture complete! Total packets: {len(self.captured_packets)}")
+        print(f"Capture complete! Total packets: {len(self.captured_packets)}")
+        
+        # Print attack summary
+        attack_summary = {}
+        for packet in packets:
+            if packet.get('attack_type'):
+                attack_type = packet['attack_type']
+                attack_summary[attack_type] = attack_summary.get(attack_type, 0) + 1
+        
+        if attack_summary:
+            print("Attack patterns injected:")
+            for attack_type, count in attack_summary.items():
+                print(f"   - {attack_type}: {count} packets")
+        
         return packets
+    
+    def _plan_attack_injections(self, total_packets: int) -> List[Dict]:
+        """Plan where to inject different attack patterns"""
+        attack_plan = []
+        
+        # Port Scan Attack (scaled based on packet count)
+        if total_packets >= 20:
+            scan_count = min(5, total_packets // 4)  # 25% of packets for port scan
+            port_scan_start = random.randint(2, max(3, total_packets // 3))
+            for i in range(port_scan_start, port_scan_start + scan_count):
+                if i < total_packets:
+                    attack_plan.append({
+                        'packet_id': i,
+                        'attack_type': 'port_scan',
+                        'target_ip': '192.168.1.100',
+                        'scan_port': 20 + (i - port_scan_start)  # Sequential ports
+                    })
+        
+        # DDoS Attack (burst of packets)
+        if total_packets >= 30:
+            ddos_count = min(8, total_packets // 5)  # 20% of packets for DDoS
+            ddos_start = random.randint(total_packets // 2, total_packets * 2 // 3)
+            for i in range(ddos_start, ddos_start + ddos_count):
+                if i < total_packets:
+                    attack_plan.append({
+                        'packet_id': i,
+                        'attack_type': 'ddos',
+                        'target_ip': '192.168.1.50',
+                        'attack_intensity': 'high'
+                    })
+        
+        # Data Exfiltration (large packets) - for larger captures
+        if total_packets >= 50:
+            exfil_count = min(3, total_packets // 20)  # 5% of packets
+            exfil_positions = random.sample(range(total_packets // 2, total_packets), exfil_count)
+            for pos in exfil_positions:
+                attack_plan.append({
+                    'packet_id': pos,
+                    'attack_type': 'data_exfiltration',
+                    'data_size': 'large'
+                })
+        
+        # Malware Communication (periodic beacons) - for larger captures
+        if total_packets >= 70:
+            beacon_count = min(2, total_packets // 30)  # Small percentage
+            beacon_positions = random.sample(range(total_packets * 2 // 3, total_packets), beacon_count)
+            for pos in beacon_positions:
+                attack_plan.append({
+                    'packet_id': pos,
+                    'attack_type': 'malware_beacon',
+                    'c2_server': '203.0.113.42'  # Example malicious IP
+                })
+        
+        return attack_plan
+    
+    def _generate_attack_packet(self, packet_id: int, attack_info: Dict) -> Dict:
+        """Generate a packet based on attack type"""
+        base_time = datetime.now()
+        
+        if attack_info['attack_type'] == 'port_scan':
+            return {
+                'id': packet_id + 1,
+                'timestamp': base_time.isoformat(),
+                'src_ip': '203.0.113.15',  # External attacker IP
+                'dst_ip': attack_info['target_ip'],
+                'src_port': random.randint(50000, 60000),
+                'dst_port': attack_info['scan_port'],
+                'protocol': 'TCP',
+                'size': random.randint(40, 80),  # Small probe packets
+                'flags': 'SYN',
+                'payload_preview': f"port_scan_{attack_info['scan_port']}",
+                'is_suspicious': True,
+                'attack_type': 'port_scan',
+                'attack_description': f"Port scan targeting port {attack_info['scan_port']}"
+            }
+        
+        elif attack_info['attack_type'] == 'ddos':
+            return {
+                'id': packet_id + 1,
+                'timestamp': base_time.isoformat(),
+                'src_ip': f"203.0.113.{random.randint(100, 200)}",  # Distributed sources
+                'dst_ip': attack_info['target_ip'],
+                'src_port': random.randint(1024, 65535),
+                'dst_port': 80,  # Target web server
+                'protocol': 'TCP',
+                'size': random.randint(20, 100),  # Small flood packets
+                'flags': 'SYN',
+                'payload_preview': f"ddos_flood_{packet_id}",
+                'is_suspicious': True,
+                'attack_type': 'ddos',
+                'attack_description': "DDoS flood attack"
+            }
+        
+        elif attack_info['attack_type'] == 'data_exfiltration':
+            return {
+                'id': packet_id + 1,
+                'timestamp': base_time.isoformat(),
+                'src_ip': '192.168.1.75',  # Internal compromised host
+                'dst_ip': '203.0.113.99',  # External data destination
+                'src_port': random.randint(40000, 50000),
+                'dst_port': 443,  # HTTPS to hide traffic
+                'protocol': 'HTTPS',
+                'size': random.randint(1400, 1500),  # Large data packets
+                'flags': 'PSH,ACK',
+                'payload_preview': f"encrypted_data_chunk_{packet_id}",
+                'is_suspicious': True,
+                'attack_type': 'data_exfiltration',
+                'attack_description': "Large data transfer to external host"
+            }
+        
+        elif attack_info['attack_type'] == 'malware_beacon':
+            return {
+                'id': packet_id + 1,
+                'timestamp': base_time.isoformat(),
+                'src_ip': '192.168.1.88',  # Infected internal host
+                'dst_ip': attack_info['c2_server'],
+                'src_port': random.randint(45000, 55000),
+                'dst_port': 8080,  # Common C2 port
+                'protocol': 'HTTP',
+                'size': random.randint(200, 400),  # Medium beacon packets
+                'flags': 'PSH,ACK',
+                'payload_preview': f"beacon_checkin_{packet_id}",
+                'is_suspicious': True,
+                'attack_type': 'malware_beacon',
+                'attack_description': "Malware command & control communication"
+            }
+        
+        # Fallback to normal packet
+        return self._generate_normal_packet(packet_id, ['TCP'], [80])
+    
+    def _generate_normal_packet(self, packet_id: int, protocols: List[str], common_ports: List[int]) -> Dict:
+        """Generate a normal network packet"""
+        return {
+            'id': packet_id + 1,
+            'timestamp': datetime.now().isoformat(),
+            'src_ip': self._generate_ip(),
+            'dst_ip': self._generate_ip(),
+            'src_port': random.randint(1024, 65535),
+            'dst_port': random.choice(common_ports),
+            'protocol': random.choice(protocols),
+            'size': random.randint(64, 1500),
+            'flags': self._generate_flags(),
+            'payload_preview': f"normal_data_{packet_id}",
+            'is_suspicious': random.random() < 0.02,  # 2% random suspicious
+            'attack_type': None,
+            'attack_description': None
+        }
         
     def _generate_ip(self) -> str:
         """Generate realistic IP addresses"""

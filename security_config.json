@@ -1,0 +1,67 @@
+{
+  "privacy_settings": {
+    "anonymize_ips": true,
+    "anonymize_mac_addresses": true,
+    "capture_payload": false,
+    "hash_sensitive_data": true,
+    "data_retention_days": 7
+  },
+  "capture_limits": {
+    "max_packets_per_session": 10000,
+    "max_session_duration_minutes": 60,
+    "max_packet_size_bytes": 1500,
+    "rate_limit_packets_per_second": 1000
+  },
+  "network_restrictions": {
+    "allowed_interfaces": [],
+    "blocked_ip_ranges": [
+      "127.0.0.0/8",
+      "169.254.0.0/16",
+      "224.0.0.0/4"
+    ],
+    "allowed_ports": [
+      21,
+      22,
+      23,
+      25,
+      53,
+      80,
+      110,
+      143,
+      443,
+      993,
+      995
+    ],
+    "blocked_ports": [
+      135,
+      137,
+      138,
+      139,
+      445,
+      1433,
+      1521,
+      3306,
+      3389,
+      5432
+    ]
+  },
+  "compliance": {
+    "require_user_consent": true,
+    "log_all_activities": true,
+    "encrypt_stored_data": true,
+    "auto_delete_old_data": true,
+    "audit_trail": true
+  },
+  "alerts": {
+    "notify_on_suspicious_activity": true,
+    "alert_threshold_packets": 1000,
+    "alert_on_blocked_ports": true,
+    "alert_on_large_transfers": true
+  },
+  "research_mode": {
+    "enabled": true,
+    "simulation_preferred": true,
+    "real_capture_requires_approval": true,
+    "academic_use_only": true
+  }
+}
